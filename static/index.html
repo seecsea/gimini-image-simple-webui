@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemini 图片生成器</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0d1a;
+      --surface:   rgba(255,255,255,0.05);
+      --border:    rgba(255,255,255,0.10);
+      --accent:    #7c3aed;
+      --accent2:   #4f46e5;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --success:   #34d399;
+      --error:     #f87171;
+      --sidebar-w: 260px;
+      --form-w:    400px;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ══════════════════════════════════════
+       TOP BAR
+    ══════════════════════════════════════ */
+    .topbar {
+      flex-shrink: 0;
+      height: 52px;
+      background: rgba(255,255,255,0.04);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 14px;
+    }
+    .topbar h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #a78bfa, #60a5fa, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      white-space: nowrap;
+    }
+    .topbar-spacer { flex: 1; }
+    .topbar-tip {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    /* ══════════════════════════════════════
+       MAIN LAYOUT  (sidebar | form | preview)
+    ══════════════════════════════════════ */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR (gallery) ──────────────── */
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: rgba(0,0,0,0.15);
+    }
+    .sidebar-header {
+      padding: 12px 14px 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #a78bfa;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .sidebar-refresh {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 1rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+    .sidebar-refresh:hover { color: #a78bfa; }
+
+    .gallery-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    .gallery-scroll::-webkit-scrollbar { width: 4px; }
+    .gallery-scroll::-webkit-scrollbar-track { background: transparent; }
+    .gallery-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    .date-group {}
+    .date-label {
+      padding: 8px 14px 4px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      position: sticky;
+      top: 0;
+      background: rgba(13,13,26,0.9);
+      backdrop-filter: blur(4px);
+    }
+    .thumb-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      padding: 2px 6px 6px;
+    }
+    .thumb {
+      aspect-ratio: 1;
+      border-radius: 5px;
+      overflow: hidden;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color 0.15s, transform 0.1s;
+      background: rgba(255,255,255,0.04);
+      position: relative;
+    }
+    .thumb:hover { border-color: #a78bfa; transform: scale(1.04); }
+    .thumb.active { border-color: var(--success); }
+    .thumb img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .gallery-empty {
+      padding: 24px 14px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    /* ── FORM PANEL ─────────────────────── */
+    .form-panel {
+      width: var(--form-w);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 18px 20px 24px;
+    }
+    .form-panel::-webkit-scrollbar { width: 4px; }
+    .form-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+    .form-group { margin-bottom: 16px; }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #a78bfa;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    textarea, select, input[type="text"] {
+      width: 100%;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+    textarea:focus, select:focus, input[type="text"]:focus {
+      border-color: #a78bfa;
+      box-shadow: 0 0 0 3px rgba(167,139,250,0.15);
+    }
+    textarea { resize: vertical; min-height: 100px; }
+    select option { background: #1e1b4b; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* ratio buttons */
+    .ratio-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ratio-btn {
+      padding: 5px 11px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      color: #c4b5fd;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.12s;
+      user-select: none;
+    }
+    .ratio-btn:hover { background: rgba(167,139,250,0.18); border-color: #a78bfa; }
+    .ratio-btn.active {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      border-color: transparent; color: #fff; font-weight: 600;
+    }
+    .ratio-btn.extended { color: #6ee7b7; border-color: rgba(110,231,183,0.25); }
+    .ratio-btn.extended.active { background: linear-gradient(135deg, #059669, #0284c7); }
+    .ratio-section-label { font-size: 0.7rem; color: var(--muted); width: 100%; margin-top: 2px; }
+
+    /* generate button */
+    .btn-generate {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5, #0284c7);
+      color: #fff;
+      font-size: 0.98rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-top: 6px;
+    }
+    .btn-generate:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+    .btn-generate:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* status */
+    .status-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; border-radius: 8px;
+      font-size: 0.85rem; margin-top: 10px;
+      transition: all 0.25s; min-height: 38px;
+    }
+    .status-bar.idle    { background: rgba(255,255,255,0.03); color: var(--muted); }
+    .status-bar.loading { background: rgba(96,165,250,0.1); color: #93c5fd; border: 1px solid rgba(96,165,250,0.2); }
+    .status-bar.success { background: rgba(52,211,153,0.1); color: #6ee7b7; border: 1px solid rgba(52,211,153,0.2); }
+    .status-bar.error   { background: rgba(248,113,113,0.1); color: #fca5a5; border: 1px solid rgba(248,113,113,0.2); }
+
+    .spinner {
+      width: 16px; height: 16px; flex-shrink: 0;
+      border: 2px solid rgba(147,197,253,0.25);
+      border-top-color: #93c5fd;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #elapsed { font-size: 0.75rem; color: var(--muted); margin-top: 5px; text-align: right; }
+
+    /* ── PREVIEW PANEL ──────────────────── */
+    .preview-panel {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: rgba(0,0,0,0.1);
+    }
+    .preview-toolbar {
+      flex-shrink: 0;
+      height: 44px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 10px;
+    }
+    .preview-filename {
+      font-family: 'Consolas', monospace;
+      font-size: 0.8rem;
+      color: #c4b5fd;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .btn-icon {
+      padding: 6px 14px;
+      border-radius: 7px;
+      border: 1px solid rgba(167,139,250,0.3);
+      background: rgba(124,58,237,0.15);
+      color: #c4b5fd;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+    .btn-icon:hover { background: rgba(124,58,237,0.35); }
+
+    .preview-area {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+    }
+    .preview-area img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 10px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+      cursor: zoom-in;
+    }
+    .preview-placeholder {
+      text-align: center;
+      color: rgba(100,116,139,0.6);
+    }
+    .preview-placeholder svg {
+      width: 64px; height: 64px;
+      margin-bottom: 14px;
+      opacity: 0.3;
+    }
+    .preview-placeholder p { font-size: 0.88rem; }
+
+    /* ══════════════════════════════════════
+       LIGHTBOX (全尺寸模态框)
+    ══════════════════════════════════════ */
+    .lightbox {
+      display: none;
+      position: fixed; inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,0.92);
+      backdrop-filter: blur(6px);
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img {
+      max-width: 96vw;
+      max-height: 96vh;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 20px 80px rgba(0,0,0,0.8);
+      cursor: default;
+    }
+    .lightbox-close {
+      position: fixed;
+      top: 18px; right: 22px;
+      font-size: 1.8rem;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+      line-height: 1;
+      transition: color 0.15s;
+      z-index: 1001;
+    }
+    .lightbox-close:hover { color: #fff; }
+    .lightbox-info {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.4);
+      font-family: 'Consolas', monospace;
+      white-space: nowrap;
+    }
+    /* prev / next */
+    .lightbox-nav {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 2rem;
+      color: rgba(255,255,255,0.5);
+      cursor: pointer;
+      padding: 12px 16px;
+      border-radius: 10px;
+      transition: all 0.15s;
+      user-select: none;
+      z-index: 1001;
+    }
+    .lightbox-nav:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .lightbox-prev { left: 12px; }
+    .lightbox-next { right: 12px; }
+
+    /* ══════════════════════════════════════
+       RESPONSIVE
+    ══════════════════════════════════════ */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+    }
+    @media (max-width: 640px) {
+      .form-panel { width: 100%; border-right: none; }
+      .preview-panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─── TOP BAR ─── -->
+<div class="topbar">
+  <h1>✨ Gemini 图片生成器</h1>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-tip">Ctrl+Enter 快速生成</span>
+</div>
+
+<!-- ─── MAIN ─── -->
+<div class="main">
+
+  <!-- SIDEBAR: gallery -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span>📁 图片库</span>
+      <button class="sidebar-refresh" title="刷新列表" onclick="loadGallery()">↻</button>
+    </div>
+    <div class="gallery-scroll" id="galleryScroll">
+      <div class="gallery-empty">暂无图片<br>生成后自动出现</div>
+    </div>
+  </aside>
+
+  <!-- FORM PANEL -->
+  <div class="form-panel">
+
+    <div class="form-group">
+      <label>Prompt 提示词</label>
+      <textarea id="prompt" placeholder="描述你想要的图片，例如：A futuristic city at sunset with flying cars..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>API Base URL <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— 兼容 OpenAI 的 API Endpoint</span></label>
+      <input type="text" id="baseUrl" placeholder="https://gateway.theturbo.ai/v1" />
+    </div>
+
+    <div class="form-group">
+      <label>模型 Model</label>
+      <select id="model">
+        <option value="gemini-3.1-flash-image-preview">gemini-3.1-flash-image-preview（默认）</option>
+        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+        <option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>宽高比 Aspect Ratio</label>
+      <div class="ratio-grid" id="ratioGrid"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group" style="margin-bottom:0">
+        <label>图片尺寸</label>
+        <select id="imageSize">
+          <option value="1K">1K</option>
+          <option value="2K" selected>2K</option>
+          <option value="4K">4K</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>文件名前缀</label>
+        <input type="text" id="prefix" value="gemini_generated" />
+      </div>
+    </div>
+
+    <button class="btn-generate" id="generateBtn" onclick="generate()">🎨 生成图片</button>
+
+    <div class="status-bar idle" id="statusBar">
+      <span id="statusIcon">💤</span>
+      <span id="statusText">等待生成...</span>
+    </div>
+    <div id="elapsed"></div>
+  </div>
+
+  <!-- PREVIEW PANEL -->
+  <div class="preview-panel">
+    <div class="preview-toolbar">
+      <span class="preview-filename" id="previewFilename">— 尚未生成图片 —</span>
+      <button class="btn-icon" id="btnFullscreen" onclick="openLightbox(currentPreviewUrl)" style="display:none">⛶ 全屏预览</button>
+      <button class="btn-icon" id="btnDownload" onclick="downloadCurrent()" style="display:none">⬇ 下载</button>
+    </div>
+    <div class="preview-area" id="previewArea">
+      <div class="preview-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
+          <rect x="3" y="3" width="18" height="18" rx="2.5"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <p>生成的图片将显示在这里<br>点击可全屏查看</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.main -->
+
+<!-- ─── LIGHTBOX ─── -->
+<div class="lightbox" id="lightbox" onclick="onLightboxBgClick(event)">
+  <span class="lightbox-close" onclick="closeLightbox()">✕</span>
+  <span class="lightbox-nav lightbox-prev" onclick="event.stopPropagation(); lightboxNav(-1)">‹</span>
+  <img id="lightboxImg" src="" alt="全尺寸预览" onclick="event.stopPropagation()" />
+  <span class="lightbox-nav lightbox-next" onclick="event.stopPropagation(); lightboxNav(1)">›</span>
+  <div class="lightbox-info" id="lightboxInfo"></div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════
+   CONSTANTS
+══════════════════════════════════════════════ */
+const STANDARD_RATIOS = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"];
+const EXTENDED_RATIOS = ["1:4","1:8","4:1","8:1"];
+
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+let selectedRatio    = "9:16";
+let currentPreviewUrl = null;
+let currentFileName  = null;
+let timerInterval    = null;
+
+// 全部图片的扁平列表（用于 lightbox 翻页）
+let allImages = [];
+let lightboxIdx = 0;
+
+/* ══════════════════════════════════════════════
+   RATIO BUTTONS
+══════════════════════════════════════════════ */
+function initRatioButtons() {
+  const grid = document.getElementById("ratioGrid");
+  grid.innerHTML = "";
+
+  const lbl1 = el("span","ratio-section-label","标准比例");
+  grid.appendChild(lbl1);
+  STANDARD_RATIOS.forEach(r => grid.appendChild(makeRatioBtn(r, false)));
+
+  const lbl2 = el("span","ratio-section-label","扩展比例（仅 gemini-3.1-flash-image-preview）");
+  grid.appendChild(lbl2);
+  EXTENDED_RATIOS.forEach(r => grid.appendChild(makeRatioBtn(r, true)));
+}
+
+function makeRatioBtn(r, extended) {
+  const btn = document.createElement("button");
+  btn.className = "ratio-btn" + (extended ? " extended" : "") + (r === selectedRatio ? " active" : "");
+  btn.textContent = r;
+  btn.dataset.ratio = r;
+  btn.onclick = () => selectRatio(r);
+  return btn;
+}
+
+function selectRatio(r) {
+  selectedRatio = r;
+  document.querySelectorAll(".ratio-btn").forEach(b => b.classList.toggle("active", b.dataset.ratio === r));
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls)  e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+
+/* ══════════════════════════════════════════════
+   STATUS
+══════════════════════════════════════════════ */
+function setStatus(type, iconHtml, text) {
+  const bar = document.getElementById("statusBar");
+  bar.className = "status-bar " + type;
+  document.getElementById("statusIcon").innerHTML = iconHtml;
+  document.getElementById("statusText").textContent = text;
+}
+
+/* ══════════════════════════════════════════════
+   TIMER
+══════════════════════════════════════════════ */
+function startTimer() {
+  const el = document.getElementById("elapsed");
+  const t0 = Date.now();
+  el.textContent = "⏱ 0.0s";
+  timerInterval = setInterval(() => {
+    el.textContent = "⏱ " + ((Date.now()-t0)/1000).toFixed(1) + "s";
+  }, 100);
+}
+function stopTimer() { clearInterval(timerInterval); }
+
+/* ══════════════════════════════════════════════
+   GENERATE
+══════════════════════════════════════════════ */
+async function generate() {
+  const prompt = document.getElementById("prompt").value.trim();
+  if (!prompt) { setStatus("error","⚠️","请先填写 Prompt 提示词"); return; }
+
+  const model     = document.getElementById("model").value;
+  const imageSize = document.getElementById("imageSize").value;
+  const prefix    = document.getElementById("prefix").value.trim() || "gemini_generated";
+  const baseUrl   = document.getElementById("baseUrl").value.trim();
+
+  const btn = document.getElementById("generateBtn");
+  btn.disabled = true;
+  setStatus("loading", '<div class="spinner"></div>', "正在生成图片，请耐心等待...");
+
+  // 清空预览
+  setPreview(null, null);
+  startTimer();
+
+  try {
+    const res  = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, model, aspect_ratio: selectedRatio, image_size: imageSize, prefix, base_url: baseUrl }),
+    });
+    stopTimer();
+    const data = await res.json();
+
+    if (!data.success) {
+      setStatus("error","❌","生成失败：" + data.message);
+      return;
+    }
+
+    setPreview(data.image_url, data.file_name);
+    const elapsed = document.getElementById("elapsed").textContent;
+    setStatus("success","✅",`生成成功！已保存  ${elapsed}`);
+
+    // 刷新图库
+    await loadGallery();
+    // 高亮刚生成的图片
+    highlightThumb(data.image_url);
+
+  } catch(err) {
+    stopTimer();
+    setStatus("error","❌","网络请求失败: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   PREVIEW PANEL
+══════════════════════════════════════════════ */
+function setPreview(url, fileName) {
+  currentPreviewUrl = url;
+  currentFileName   = fileName;
+  const area = document.getElementById("previewArea");
+
+  if (!url) {
+    area.innerHTML = `
+      <div class="preview-placeholder">
+        <div class="spinner" style="width:40px;height:40px;border-width:3px;margin:0 auto 14px;"></div>
+        <p>AI 正在创作中...</p>
+      </div>`;
+    document.getElementById("previewFilename").textContent = "正在生成...";
+    document.getElementById("btnFullscreen").style.display = "none";
+    document.getElementById("btnDownload").style.display   = "none";
+    return;
+  }
+
+  const img = new Image();
+  img.src = url;
+  img.alt = fileName;
+  img.title = "点击全屏查看";
+  img.onclick = () => openLightbox(url);
+  area.innerHTML = "";
+  area.appendChild(img);
+
+  document.getElementById("previewFilename").textContent = fileName || url;
+  document.getElementById("btnFullscreen").style.display = "";
+  document.getElementById("btnDownload").style.display   = "";
+}
+
+function downloadCurrent() {
+  if (!currentPreviewUrl) return;
+  const a = document.createElement("a");
+  a.href     = currentPreviewUrl;
+  a.download = currentFileName || "gemini_image.png";
+  a.click();
+}
+
+/* ══════════════════════════════════════════════
+   GALLERY
+══════════════════════════════════════════════ */
+async function loadGallery() {
+  try {
+    const res  = await fetch("/api/gallery");
+    const data = await res.json();
+    renderGallery(data);
+  } catch(e) {
+    console.warn("图库加载失败:", e);
+  }
+}
+
+function renderGallery(groups) {
+  const scroll = document.getElementById("galleryScroll");
+  allImages = [];
+
+  if (!groups || groups.length === 0) {
+    scroll.innerHTML = '<div class="gallery-empty">暂无图片<br>生成后自动出现</div>';
+    return;
+  }
+
+  scroll.innerHTML = "";
+  groups.forEach(g => {
+    const groupEl = document.createElement("div");
+    groupEl.className = "date-group";
+
+    const label = el("div","date-label", formatDate(g.date));
+    groupEl.appendChild(label);
+
+    const grid = el("div","thumb-grid");
+    g.images.forEach(img => {
+      allImages.push(img);
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      thumb.dataset.url = img.url;
+      thumb.title = img.file_name + "\n" + formatSize(img.size);
+
+      const imgEl = document.createElement("img");
+      imgEl.src   = img.url;
+      imgEl.alt   = img.file_name;
+      imgEl.loading = "lazy";
+      thumb.appendChild(imgEl);
+
+      thumb.onclick = () => {
+        // 在预览面板显示
+        setPreview(img.url, img.file_name);
+        // 高亮
+        document.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
+        thumb.classList.add("active");
+      };
+      thumb.ondblclick = () => openLightboxByUrl(img.url);
+
+      grid.appendChild(thumb);
+    });
+    groupEl.appendChild(grid);
+    scroll.appendChild(groupEl);
+  });
+}
+
+function highlightThumb(url) {
+  document.querySelectorAll(".thumb").forEach(t => {
+    t.classList.toggle("active", t.dataset.url === url);
+  });
+}
+
+function formatDate(d) {
+  if (!d || d.length < 8) return d;
+  return d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6,8);
+}
+
+function formatSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + " KB";
+  return (bytes/1024/1024).toFixed(2) + " MB";
+}
+
+/* ══════════════════════════════════════════════
+   LIGHTBOX
+══════════════════════════════════════════════ */
+function openLightbox(url) {
+  const idx = allImages.findIndex(i => i.url === url);
+  lightboxIdx = idx >= 0 ? idx : 0;
+  showLightboxAt(lightboxIdx);
+  document.getElementById("lightbox").classList.add("open");
+  document.addEventListener("keydown", onLightboxKey);
+}
+
+function openLightboxByUrl(url) { openLightbox(url); }
+
+function showLightboxAt(idx) {
+  if (allImages.length === 0) return;
+  idx = ((idx % allImages.length) + allImages.length) % allImages.length;
+  lightboxIdx = idx;
+  const img = allImages[idx];
+  document.getElementById("lightboxImg").src = img.url;
+  document.getElementById("lightboxInfo").textContent =
+    img.file_name + "  ·  " + formatSize(img.size) +
+    "  ·  " + (idx+1) + " / " + allImages.length;
+}
+
+function lightboxNav(dir) {
+  showLightboxAt(lightboxIdx + dir);
+}
+
+function closeLightbox() {
+  document.getElementById("lightbox").classList.remove("open");
+  document.removeEventListener("keydown", onLightboxKey);
+}
+
+function onLightboxBgClick(e) {
+  if (e.target === document.getElementById("lightbox")) closeLightbox();
+}
+
+function onLightboxKey(e) {
+  if (e.key === "Escape")      closeLightbox();
+  if (e.key === "ArrowRight")  lightboxNav(1);
+  if (e.key === "ArrowLeft")   lightboxNav(-1);
+}
+
+/* ══════════════════════════════════════════════
+   KEYBOARD SHORTCUT
+══════════════════════════════════════════════ */
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==="Enter") generate();
+});
+
+/* ══════════════════════════════════════════════
+   INIT — 从 /api/config 加载默认值
+══════════════════════════════════════════════ */
+async function init() {
+  initRatioButtons();
+  loadGallery();
+  try {
+    const res  = await fetch("/api/config");
+    const cfg  = await res.json();
+    // 用服务端默认 base_url 填充输入框（仅当用户未输入时）
+    const baseUrlInput = document.getElementById("baseUrl");
+    if (cfg.default_base_url && !baseUrlInput.value.trim()) {
+      baseUrlInput.value = cfg.default_base_url;
+    }
+  } catch(e) {
+    console.warn("加载配置失败:", e);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
