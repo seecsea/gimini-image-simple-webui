@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/openai/openai-go"
@@ -50,6 +51,9 @@ type ImageItem struct {
 	Date     string `json:"date"`
 	Size     int64  `json:"size"`
 }
+
+// generating 用原子标志防止并发生成（0=空闲，1=生成中）
+var generating int32
 
 var validModels = []string{
 	"gemini-2.5-flash-image",
@@ -201,6 +205,13 @@ func generateHandler(w http.ResponseWriter, r *http.Request, apiKey string) {
 		sendError(w, http.StatusMethodNotAllowed, "仅支持 POST 请求")
 		return
 	}
+
+	// 原子 CAS：若已有任务在运行则直接拒绝
+	if !atomic.CompareAndSwapInt32(&generating, 0, 1) {
+		sendError(w, http.StatusTooManyRequests, "正在生成图片，请等待当前任务完成后再试")
+		return
+	}
+	defer atomic.StoreInt32(&generating, 0)
 
 	var req GenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -398,4 +409,3 @@ func getModelShortName(model string) string {
 		return "gemini"
 	}
 }
-
