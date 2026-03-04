@@ -23,7 +23,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
-          cache-dependency-path: gimini-image-simple-webui/go.sum
+          cache-dependency-path: ./go.sum
 
       # 3. 生成版本号（当天日期，格式 YYYY.MM.DD）
       - name: Set release version
@@ -32,12 +32,12 @@ jobs:
 
       # 4. 下载依赖
       - name: Download Go modules
-        working-directory: gimini-image-simple-webui
+        working-directory: ./
         run: go mod download
 
       # 5. 编译 Linux (amd64)
       - name: Build for Linux (amd64)
-        working-directory: gimini-image-simple-webui
+        working-directory: ./
         env:
           GOOS: linux
           GOARCH: amd64
@@ -48,7 +48,7 @@ jobs:
 
       # 6. 编译 Linux (arm64)
       - name: Build for Linux (arm64)
-        working-directory: gimini-image-simple-webui
+        working-directory: ./
         env:
           GOOS: linux
           GOARCH: arm64
@@ -59,7 +59,7 @@ jobs:
 
       # 7. 编译 Windows (amd64)
       - name: Build for Windows (amd64)
-        working-directory: gimini-image-simple-webui
+        working-directory: ./
         env:
           GOOS: windows
           GOARCH: amd64
@@ -70,7 +70,7 @@ jobs:
 
       # 8. 打包前端静态文件（与可执行文件一起分发）
       - name: Package release archives
-        working-directory: gimini-image-simple-webui
+        working-directory: ./
         run: |
           # Linux amd64
           mkdir -p dist/linux-amd64/static
