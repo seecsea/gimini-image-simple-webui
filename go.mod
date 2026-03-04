@@ -1,4 +1,4 @@
-module gemini-image-webapp
+module gimini-image-simple-webui
 
 go 1.23.11
 
