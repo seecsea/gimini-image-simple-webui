@@ -513,10 +513,11 @@ const EXTENDED_RATIOS = ["1:4","1:8","4:1","8:1"];
 /* ══════════════════════════════════════════════
    STATE
 ══════════════════════════════════════════════ */
-let selectedRatio    = "9:16";
+let selectedRatio     = "9:16";
 let currentPreviewUrl = null;
-let currentFileName  = null;
-let timerInterval    = null;
+let currentFileName   = null;
+let timerInterval     = null;
+let isGenerating      = false;   // 前端防重复点击
 
 // 全部图片的扁平列表（用于 lightbox 翻页）
 let allImages = [];
@@ -586,6 +587,12 @@ function stopTimer() { clearInterval(timerInterval); }
    GENERATE
 ══════════════════════════════════════════════ */
 async function generate() {
+  // 前端防重复：生成中直接忽略
+  if (isGenerating) {
+    setStatus("error","⏳","正在生成中，请等待当前任务完成...");
+    return;
+  }
+
   const prompt = document.getElementById("prompt").value.trim();
   if (!prompt) { setStatus("error","⚠️","请先填写 Prompt 提示词"); return; }
 
@@ -595,7 +602,11 @@ async function generate() {
   const baseUrl   = document.getElementById("baseUrl").value.trim();
 
   const btn = document.getElementById("generateBtn");
+
+  // 锁定状态
+  isGenerating = true;
   btn.disabled = true;
+  btn.textContent = "⏳ 生成中，请稍候...";
   setStatus("loading", '<div class="spinner"></div>', "正在生成图片，请耐心等待...");
 
   // 清空预览
@@ -629,7 +640,10 @@ async function generate() {
     stopTimer();
     setStatus("error","❌","网络请求失败: " + err.message);
   } finally {
+    // 无论成功或失败，解锁
+    isGenerating = false;
     btn.disabled = false;
+    btn.textContent = "🎨 生成图片";
   }
 }
 
