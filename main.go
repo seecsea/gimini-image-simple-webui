@@ -88,7 +88,13 @@ func main() {
 	fmt.Printf("   图片输出: %s\n", OUTPUTS_DIR)
 	fmt.Printf("   API Key 长度: %d\n\n", len(apiKey))
 
-	if err := http.ListenAndServe(LISTEN_ADDR, nil); err != nil {
+	server := &http.Server{
+		Addr:         LISTEN_ADDR,
+		ReadTimeout:  10 * time.Second,   // 读取请求头超时
+		WriteTimeout: 300 * time.Second,  // 写响应超时（图片生成最多等 5 分钟）
+		IdleTimeout:  120 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
 }
@@ -392,3 +398,4 @@ func getModelShortName(model string) string {
 		return "gemini"
 	}
 }
+
