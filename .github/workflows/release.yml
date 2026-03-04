@@ -1,0 +1,151 @@
+name: Daily Release
+
+on:
+  schedule:
+    # 每天 UTC 01:00 触发（北京时间 09:00）
+    - cron: '0 0 * * *'
+  # 也支持手动触发
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 设置 Go 环境
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: webapp/go.sum
+
+      # 3. 生成版本号（当天日期，格式 YYYY.MM.DD）
+      - name: Set release version
+        id: version
+        run: echo "VERSION=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+      # 4. 下载依赖
+      - name: Download Go modules
+        working-directory: webapp
+        run: go mod download
+
+      # 5. 编译 Linux (amd64)
+      - name: Build for Linux (amd64)
+        working-directory: webapp
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" \
+            -o gemini-webapp-linux-amd64 .
+
+      # 6. 编译 Linux (arm64)
+      - name: Build for Linux (arm64)
+        working-directory: webapp
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" \
+            -o gemini-webapp-linux-arm64 .
+
+      # 7. 编译 Windows (amd64)
+      - name: Build for Windows (amd64)
+        working-directory: webapp
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" \
+            -o gemini-webapp-windows-amd64.exe .
+
+      # 8. 打包前端静态文件（与可执行文件一起分发）
+      - name: Package release archives
+        working-directory: webapp
+        run: |
+          # Linux amd64
+          mkdir -p dist/linux-amd64/static
+          cp gemini-webapp-linux-amd64 dist/linux-amd64/
+          cp -r static/index.html dist/linux-amd64/static/
+          mkdir -p dist/linux-amd64/static/outputs
+          cp README.md dist/linux-amd64/
+          tar -czf ../gemini-webapp-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz \
+            -C dist/linux-amd64 .
+
+          # Linux arm64
+          mkdir -p dist/linux-arm64/static
+          cp gemini-webapp-linux-arm64 dist/linux-arm64/
+          cp -r static/index.html dist/linux-arm64/static/
+          mkdir -p dist/linux-arm64/static/outputs
+          cp README.md dist/linux-arm64/
+          tar -czf ../gemini-webapp-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz \
+            -C dist/linux-arm64 .
+
+          # Windows amd64
+          mkdir -p dist/windows-amd64/static
+          cp gemini-webapp-windows-amd64.exe dist/windows-amd64/
+          cp -r static/index.html dist/windows-amd64/static/
+          mkdir -p dist/windows-amd64/static/outputs
+          cp README.md dist/windows-amd64/
+          cp start.ps1 dist/windows-amd64/
+          cd dist/windows-amd64
+          zip -r ../../gemini-webapp-${{ steps.version.outputs.VERSION }}-windows-amd64.zip .
+          cd ../..
+
+      # 9. 检查是否已存在同名 Release，如存在则删除（避免每日重复报错）
+      - name: Delete existing release if exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $VERSION already exists, deleting..."
+            gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+
+      # 10. 创建 GitHub Release 并上传产物
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Release $VERSION" \
+            --notes "## Gemini Image Web App — $VERSION
+
+### 下载说明
+| 文件 | 平台 |
+|------|------|
+| \`gemini-webapp-${VERSION}-linux-amd64.tar.gz\` | Linux x86_64 |
+| \`gemini-webapp-${VERSION}-linux-arm64.tar.gz\` | Linux ARM64（树莓派等） |
+| \`gemini-webapp-${VERSION}-windows-amd64.zip\` | Windows x86_64 |
+
+### 使用方法
+**Linux：**
+\`\`\`bash
+tar -xzf gemini-webapp-${VERSION}-linux-amd64.tar.gz
+export GEMINI_API_KEY=your-api-key
+./gemini-webapp-linux-amd64
+\`\`\`
+
+**Windows：**
+解压 zip 后，在 cmd 中运行：
+\`\`\`cmd
+set GEMINI_API_KEY=your-api-key
+gemini-webapp-windows-amd64.exe
+\`\`\`
+
+浏览器访问 http://localhost:8080" \
+            gemini-webapp-${VERSION}-linux-amd64.tar.gz \
+            gemini-webapp-${VERSION}-linux-arm64.tar.gz \
+            gemini-webapp-${VERSION}-windows-amd64.zip
