@@ -23,7 +23,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
-          cache-dependency-path: ./go.sum
+          cache-dependency-path: go.sum
 
       # 3. 生成版本号（当天日期，格式 YYYY.MM.DD）
       - name: Set release version
@@ -32,12 +32,10 @@ jobs:
 
       # 4. 下载依赖
       - name: Download Go modules
-        working-directory: ./
         run: go mod download
 
       # 5. 编译 Linux (amd64)
       - name: Build for Linux (amd64)
-        working-directory: ./
         env:
           GOOS: linux
           GOARCH: amd64
@@ -48,7 +46,6 @@ jobs:
 
       # 6. 编译 Linux (arm64)
       - name: Build for Linux (arm64)
-        working-directory: ./
         env:
           GOOS: linux
           GOARCH: arm64
@@ -59,7 +56,6 @@ jobs:
 
       # 7. 编译 Windows (amd64)
       - name: Build for Windows (amd64)
-        working-directory: ./
         env:
           GOOS: windows
           GOARCH: amd64
@@ -70,23 +66,23 @@ jobs:
 
       # 8. 打包前端静态文件（与可执行文件一起分发）
       - name: Package release archives
-        working-directory: ./
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
+          mkdir -p releases
 
           # Linux amd64
           mkdir -p dist/linux-amd64/static/outputs
           cp gemini-webapp-linux-amd64 dist/linux-amd64/
           cp static/index.html dist/linux-amd64/static/
           cp README.md dist/linux-amd64/
-          tar -czf ../gemini-webapp-${VERSION}-linux-amd64.tar.gz -C dist/linux-amd64 .
+          tar -czf releases/gemini-webapp-${VERSION}-linux-amd64.tar.gz -C dist/linux-amd64 .
 
           # Linux arm64
           mkdir -p dist/linux-arm64/static/outputs
           cp gemini-webapp-linux-arm64 dist/linux-arm64/
           cp static/index.html dist/linux-arm64/static/
           cp README.md dist/linux-arm64/
-          tar -czf ../gemini-webapp-${VERSION}-linux-arm64.tar.gz -C dist/linux-arm64 .
+          tar -czf releases/gemini-webapp-${VERSION}-linux-arm64.tar.gz -C dist/linux-arm64 .
 
           # Windows amd64
           mkdir -p dist/windows-amd64/static/outputs
@@ -95,8 +91,11 @@ jobs:
           cp README.md dist/windows-amd64/
           cp start.ps1 dist/windows-amd64/
           cd dist/windows-amd64
-          zip -r ../../gemini-webapp-${VERSION}-windows-amd64.zip .
+          zip -r ../../releases/gemini-webapp-${VERSION}-windows-amd64.zip .
           cd ../..
+
+          echo "=== 打包产物 ==="
+          ls -lh releases/
 
       # 9. 检查是否已存在同名 Release，如存在则删除
       - name: Delete existing release if exists
@@ -154,6 +153,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Release $VERSION" \
             --notes-file release-notes.md \
-            gemini-webapp-${VERSION}-linux-amd64.tar.gz \
-            gemini-webapp-${VERSION}-linux-arm64.tar.gz \
-            gemini-webapp-${VERSION}-windows-amd64.zip
+            releases/gemini-webapp-${VERSION}-linux-amd64.tar.gz \
+            releases/gemini-webapp-${VERSION}-linux-arm64.tar.gz \
+            releases/gemini-webapp-${VERSION}-windows-amd64.zip
